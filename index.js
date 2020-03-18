@@ -1,19 +1,25 @@
 const dotenv = require('dotenv').config();
 const express = require('express');
-const app = express();
+const cookieParser = require('cookie-parser');
 const crypto = require('crypto');
 const cookie = require('cookie');
 const nonce = require('nonce')();
 const querystring = require('querystring');
 const request = require('request-promise');
 
+const app = express();
+app.use(cookieParser());
+
 const apiKey = process.env.SHOPIFY_API_KEY;
 const apiSecret = process.env.SHOPIFY_API_SECRET;
-const scopes = 'read_products';
+const scopes = 'read_content';
 const forwardingAddress = process.env.SHOPIFY_BACKEND_URL; // Replace this with your HTTPS Forwarding address
 
+
+// Enable basic render
+app.use(express.static('public'));
 app.get('/', (req, res) => {
-  res.send('Hello World!');
+  res.render('index');
 });
 
 app.get('/shopify', (req, res) => {
@@ -27,8 +33,8 @@ app.get('/shopify', (req, res) => {
       '&state=' + state +
       '&redirect_uri=' + redirectUri;
 
-    res.cookie('state', state);
-    res.redirect(installUrl);
+    res.cookie('state', state,  { expires: new Date(Date.now() + 900000), httpOnly: true });
+    res.redirect(302, installUrl);
   } else {
     return res.status(400).send('Missing shop parameter. Please add ?shop=your-development-shop.myshopify.com to your request');
   }
@@ -36,11 +42,14 @@ app.get('/shopify', (req, res) => {
 
 app.get('/shopify/callback', (req, res) => {
   const { shop, hmac, code, state } = req.query;
-  const stateCookie = cookie.parse(req.headers.cookie).state;
 
-  if (state !== stateCookie) {
-    return res.status(403).send('Request origin cannot be verified');
-  }
+  // TODO: enable request origin verification
+
+  // const stateCookie = cookie.parse(req.cookies).state;
+
+  // if (state !== stateCookie) {
+  //   return res.status(403).send('Request origin cannot be verified');
+  // }
 
   if (shop && hmac && code) {
     // DONE: Validate request is from Shopify
@@ -81,12 +90,14 @@ app.get('/shopify/callback', (req, res) => {
       const accessToken = accessTokenResponse.access_token;
       // DONE: Use access token to make API call to 'shop' endpoint
       const shopRequestUrl = 'https://' + shop + '/admin/api/2020-01/shop.json';
+      const pagesRequestURI = 'https://'+ shop + '/admin/api/2020-01/pages.json';
       const shopRequestHeaders = {
         'X-Shopify-Access-Token': accessToken,
       };
 
-      request.get(shopRequestUrl, { headers: shopRequestHeaders })
+      request.get(pagesRequestURI, { headers: shopRequestHeaders })
       .then((shopResponse) => {
+        console.log(shopResponse, '**********')
         res.status(200).end(shopResponse);
       })
       .catch((error) => {
